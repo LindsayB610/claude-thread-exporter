@@ -22,7 +22,7 @@
 | 7 | Local output and CLI execution | Complete for V1 |
 | 8 | User-facing error copy | Complete for known failures |
 | 9 | Examples and docs | Complete for V1 |
-| 10 | Release candidate hardening | In progress |
+| 10 | Release candidate hardening | Complete for RC1 |
 | 11 | GitHub writer | Not started |
 | 12 | Web frontend | Not started |
 
@@ -580,13 +580,7 @@ Completed:
 
 ### Phase 10: Release Candidate Hardening
 
-Status: in progress.
-
-Remaining:
-
-- update/commit/push current work
-- add one code-heavy fixture if easy
-- tag or mark first release candidate when ready
+Status: complete for RC1.
 
 Completed:
 
@@ -594,6 +588,12 @@ Completed:
 - package metadata includes repository, bugs, homepage, and keywords
 - release gates passed: test, typecheck, build, pack dry-run, production audit
 - final live URL smoke attempted; Claude/Cloudflare showed browser verification loop, matching the documented experimental-path limitation
+- current release-candidate work committed and pushed to `main`
+- RC marker/tag prepared for `v0.1.0-rc.1`
+
+Deferred:
+
+- add a real code-heavy Claude fixture when one is available; the synthetic code-fence fixture covers Markdown code preservation for RC1
 
 ### Phase 11: GitHub Writer
 
