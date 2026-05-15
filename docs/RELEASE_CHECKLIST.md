@@ -18,9 +18,9 @@ Use this checklist before tagging or publishing a release candidate.
 
 ## Live Capture Check
 
-- Try one live `--url` smoke with headed Playwright Chromium.
+- Try one live `--claude-url` smoke with headed Playwright Chromium.
 - If Claude/Cloudflare loops verification, document that result rather than treating it as a release blocker.
-- Confirm the reliable `--snapshot` path still works.
+- Confirm the reliable `--snapshot-json` path still works.
 
 ## Release Notes
 

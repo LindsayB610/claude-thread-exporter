@@ -119,16 +119,18 @@ Sources:
 ## Implemented CLI Contract
 
 ```bash
-claude-thread-exporter --url "https://claude.ai/share/..."
-claude-thread-exporter --url "https://claude.ai/share/..." --format pdf
-claude-thread-exporter --snapshot ./snapshot.json --source "https://claude.ai/share/..." --format pdf
+claude-thread-exporter --claude-url "https://claude.ai/share/..."
+claude-thread-exporter --claude-url "https://claude.ai/share/..." --format pdf
+claude-thread-exporter --snapshot-json ./snapshot.json --source "https://claude.ai/share/..." --format pdf
 ```
 
 Implemented options:
 
-- `--url <url>`: experimental capture of a Claude shared link with headed Playwright Chromium
-- `--snapshot <path>`: export from saved Claude snapshot JSON
-- `--source <url>`: source URL to show in exports when using `--snapshot`
+- `--claude-url <url>`: Claude share link path; experimental capture of a Claude shared link with headed Playwright Chromium
+- `--url <url>`: alias for `--claude-url`
+- `--snapshot-json <path>`: Claude snapshot JSON path; export from saved Claude snapshot JSON
+- `--snapshot <path>`: alias for `--snapshot-json`
+- `--source <url>`: source URL to show in exports when using the snapshot JSON path
 - `--format <format>`: `md`, `html`, or `pdf`; defaults to `md`
 - `--out <path>`: write output to a local path
 - `--stdout`: print Markdown/HTML to stdout
@@ -314,7 +316,7 @@ Manual smoke coverage performed:
 - examples regenerated through the built CLI
 - V1 fixtures/examples passed a public-safety scan for obvious private fields and credentials
 - live URL smoke succeeded once against the kelp Claude share link with Playwright Chromium
-- later live URL smoke hit a Claude/Cloudflare verification loop, proving `--url` is not release-reliable
+- later live URL smoke hit a Claude/Cloudflare verification loop, proving the Claude share link path is not release-reliable
 
 ## Fixtures
 
@@ -387,7 +389,7 @@ Status: implemented and tested.
 Mitigation:
 
 - tell the user to complete the browser check inside Playwright Chromium
-- if verification loops, tell the user live capture is blocked and to use `--snapshot`
+- if verification loops, tell the user live capture is blocked and to use `--snapshot-json`
 - reuse the same profile afterward when verification succeeds
 
 Status: implemented, but live capture remains experimental.
@@ -466,8 +468,8 @@ Completed:
 
 Decision:
 
-- keep `--url` as experimental
-- treat `--snapshot` as the reliable V1 path
+- keep the Claude share link path as experimental
+- treat the Claude snapshot JSON path as the reliable V1 path
 
 ### Phase 3: CLI Contract And Argument Validation
 
@@ -477,8 +479,11 @@ Completed:
 
 - `parseArgs()`
 - Claude share URL validation
+- two named Claude input paths: link and snapshot JSON
 - `--url`
+- `--claude-url`
 - `--snapshot`
+- `--snapshot-json`
 - `--source`
 - `--format md|html|pdf`
 - `--out`

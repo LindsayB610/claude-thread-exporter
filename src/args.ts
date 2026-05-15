@@ -3,13 +3,20 @@ import type { CliOptions, ExportFormat } from "./types.js";
 export const helpText = `claude-thread-exporter
 
 Usage:
-  claude-thread-exporter --url "https://claude.ai/share/..." [--format md|html|pdf]
-  claude-thread-exporter --snapshot ./snapshot.json [--format md|html|pdf]
+  Claude share link path:
+    claude-thread-exporter --claude-url "https://claude.ai/share/..." [--format md|html|pdf]
+    claude-thread-exporter --url "https://claude.ai/share/..." [--format md|html|pdf]
+
+  Claude snapshot JSON path:
+    claude-thread-exporter --snapshot-json ./snapshot.json [--format md|html|pdf]
+    claude-thread-exporter --snapshot ./snapshot.json [--format md|html|pdf]
 
 Options:
-  --url <url>             Experimental: capture a Claude share URL with headed Playwright Chromium.
-  --snapshot <path>       Export from an already captured Claude snapshot JSON file.
-  --source <url>          Source URL to show in exports when using --snapshot.
+  --claude-url <url>      Claude share link path: experimental capture with headed Playwright Chromium.
+  --url <url>             Alias for --claude-url.
+  --snapshot-json <path>  Claude snapshot JSON path: reliable export from captured snapshot JSON.
+  --snapshot <path>       Alias for --snapshot-json.
+  --source <url>          Source URL to show in exports when using the snapshot JSON path.
   --format <format>       md, html, or pdf. Defaults to md.
   --out <path>            Output path. Defaults to Downloads with a title-based filename.
   --stdout                Print md/html to stdout instead of writing a file.
@@ -24,7 +31,7 @@ Options:
 
 Browser note:
   Live URL export is experimental because Claude/Cloudflare can loop browser verification
-  in Playwright Chromium. Snapshot JSON export is the reliable local path.
+  in Playwright Chromium. Claude snapshot JSON export is the reliable local path.
   Safari sessions cannot be reused by Playwright.
   If Chromium is missing, run: npx playwright install chromium
 
@@ -45,9 +52,11 @@ export function parseArgs(argv: string[]): CliOptions {
     const arg = argv[index]!;
     switch (arg) {
       case "--url":
+      case "--claude-url":
         options.url = readValue(argv, ++index, arg);
         break;
       case "--snapshot":
+      case "--snapshot-json":
         options.snapshotPath = readValue(argv, ++index, arg);
         break;
       case "--source":
@@ -92,11 +101,11 @@ export function parseArgs(argv: string[]): CliOptions {
   }
 
   if (!options.url && !options.snapshotPath) {
-    throw new Error("Missing input. Provide --url or --snapshot.");
+    throw new Error("Missing input. Provide --claude-url or --snapshot-json.");
   }
 
   if (options.url && options.snapshotPath) {
-    throw new Error("Use either --url or --snapshot, not both.");
+    throw new Error("Use either the Claude share link path or the Claude snapshot JSON path, not both.");
   }
 
   if (options.stdout && options.out) {

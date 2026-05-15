@@ -22,7 +22,7 @@ Live Claude URL capture is browser-assisted and experimental.
 - A saved snapshot JSON file is a supported offline input for repeat exports and tests.
 - If Claude/Cloudflare loops verification in Playwright Chromium, the live URL path is considered blocked rather than user-error.
 
-Snapshot artifacts are repair aids and may also be used as explicit export inputs via `--snapshot`.
+Snapshot artifacts are repair aids and may also be used as explicit export inputs via `--snapshot-json`.
 
 ## Privacy Contract
 

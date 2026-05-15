@@ -21,7 +21,7 @@ Live URL export is browser-assisted and experimental.
 
 Claude's shared snapshot API is protected in a way that normal `fetch`/`curl` requests do not reliably pass. The CLI therefore opens a real Chromium window controlled by Playwright and waits for Claude's own page to load the snapshot JSON.
 
-This worked in smoke tests, but it is not guaranteed. Claude/Cloudflare can also put Playwright Chromium into a verification loop. When that happens, repeated "I am human" clicks may not recover the session. The reliable V1 export path is `--snapshot` with a previously captured Claude snapshot JSON file.
+This worked in smoke tests, but it is not guaranteed. Claude/Cloudflare can also put Playwright Chromium into a verification loop. When that happens, repeated "I am human" clicks may not recover the session. The reliable V1 export path is `--snapshot-json` with a previously captured Claude snapshot JSON file.
 
 This means:
 
@@ -42,48 +42,56 @@ You can override it with `--profile-dir`.
 
 ## Usage
 
+### Claude Share Link Path
+
 Export a Claude shared link as Markdown:
 
 ```bash
-claude-thread-exporter --url "https://claude.ai/share/..."
+claude-thread-exporter --claude-url "https://claude.ai/share/..."
 ```
 
 Export as PDF:
 
 ```bash
-claude-thread-exporter --url "https://claude.ai/share/..." --format pdf
+claude-thread-exporter --claude-url "https://claude.ai/share/..." --format pdf
 ```
 
 Choose an output path:
 
 ```bash
-claude-thread-exporter --url "https://claude.ai/share/..." --format pdf --out "./exports/thread.pdf"
+claude-thread-exporter --claude-url "https://claude.ai/share/..." --format pdf --out "./exports/thread.pdf"
 ```
 
 Save the captured snapshot JSON while exporting:
 
 ```bash
-claude-thread-exporter --url "https://claude.ai/share/..." --save-snapshot "./fixtures/thread.snapshot.json"
+claude-thread-exporter --claude-url "https://claude.ai/share/..." --save-snapshot "./fixtures/thread.snapshot.json"
 ```
+
+`--url` is still supported as an alias for `--claude-url`.
+
+### Claude Snapshot JSON Path
 
 Export again from a saved snapshot without opening the browser:
 
 ```bash
-claude-thread-exporter --snapshot "./fixtures/thread.snapshot.json" --source "https://claude.ai/share/..." --format pdf
+claude-thread-exporter --snapshot-json "./fixtures/thread.snapshot.json" --source "https://claude.ai/share/..." --format pdf
 ```
 
 Print Markdown or HTML to stdout:
 
 ```bash
-claude-thread-exporter --snapshot "./fixtures/thread.snapshot.json" --format md --stdout
-claude-thread-exporter --snapshot "./fixtures/thread.snapshot.json" --format html --stdout
+claude-thread-exporter --snapshot-json "./fixtures/thread.snapshot.json" --format md --stdout
+claude-thread-exporter --snapshot-json "./fixtures/thread.snapshot.json" --format html --stdout
 ```
+
+`--snapshot` is still supported as an alias for `--snapshot-json`.
 
 Write an export directly to GitHub:
 
 ```bash
 GITHUB_TOKEN="..." claude-thread-exporter \
-  --snapshot "./fixtures/thread.snapshot.json" \
+  --snapshot-json "./fixtures/thread.snapshot.json" \
   --format md \
   --repo "owner/repo" \
   --repo-path "exports/thread.md"
@@ -93,7 +101,7 @@ Overwrite an existing GitHub file:
 
 ```bash
 GITHUB_TOKEN="..." claude-thread-exporter \
-  --snapshot "./fixtures/thread.snapshot.json" \
+  --snapshot-json "./fixtures/thread.snapshot.json" \
   --repo "owner/repo" \
   --repo-path "exports/thread.md" \
   --force
@@ -102,9 +110,11 @@ GITHUB_TOKEN="..." claude-thread-exporter \
 ## Options
 
 ```text
---url <url>             Experimental: capture a Claude share URL with headed Playwright Chromium.
---snapshot <path>       Export from an already captured Claude snapshot JSON file.
---source <url>          Source URL to show in exports when using --snapshot.
+--claude-url <url>      Claude share link path: experimental capture with headed Playwright Chromium.
+--url <url>             Alias for --claude-url.
+--snapshot-json <path>  Claude snapshot JSON path: reliable export from captured snapshot JSON.
+--snapshot <path>       Alias for --snapshot-json.
+--source <url>          Source URL to show in exports when using the snapshot JSON path.
 --format <format>       md, html, or pdf. Defaults to md.
 --out <path>            Output path. Defaults to Downloads with a title-based filename.
 --stdout                Print md/html to stdout instead of writing a file.
@@ -175,7 +185,7 @@ Then rerun the export command.
 
 Complete the sign-in, authentication, or browser check inside the Playwright Chromium window the CLI opened. Then rerun the same command. The CLI will reuse the authenticated profile at `~/.claude-thread-exporter/chromium-profile` unless you pass a custom `--profile-dir`.
 
-If Cloudflare verification loops, stop clicking. That Playwright session is not trusted enough to complete live capture right now. Use `--snapshot` with a captured snapshot JSON file, or try the live capture again later.
+If Cloudflare verification loops, stop clicking. That Playwright session is not trusted enough to complete live capture right now. Use `--snapshot-json` with a captured snapshot JSON file, or try the live capture again later.
 
 Safari and your normal Chrome app sessions do not carry over to Playwright Chromium.
 
@@ -184,13 +194,13 @@ Safari and your normal Chrome app sessions do not carry over to Playwright Chrom
 If Claude is logged in but the CLI still times out, rerun with a longer timeout:
 
 ```bash
-claude-thread-exporter --url "https://claude.ai/share/..." --timeout 180000
+claude-thread-exporter --claude-url "https://claude.ai/share/..." --timeout 180000
 ```
 
 You can also save a successful capture for repeat exports:
 
 ```bash
-claude-thread-exporter --url "https://claude.ai/share/..." --save-snapshot "./thread.snapshot.json"
+claude-thread-exporter --claude-url "https://claude.ai/share/..." --save-snapshot "./thread.snapshot.json"
 ```
 
 ### GitHub export fails
@@ -228,7 +238,7 @@ Run locally:
 
 ```bash
 npm run dev -- --help
-npm run dev -- --snapshot fixtures/shared-links/plain-text-kelp.snapshot.json --stdout
+npm run dev -- --snapshot-json fixtures/shared-links/plain-text-kelp.snapshot.json --stdout
 ```
 
 ## Project Notes

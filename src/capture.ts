@@ -72,7 +72,7 @@ export async function buildCaptureFailureMessage(error: unknown, page: Page | un
     "  1. Re-run the same command.",
     "  2. When the Playwright Chromium window opens, complete any Claude sign-in, auth, or browser check there.",
     "  3. If Cloudflare verification loops or never completes, this Claude link cannot be captured reliably through Playwright right now.",
-    "  4. Use --snapshot with a previously captured snapshot JSON file, or try again later with the same profile.",
+    "  4. Use --snapshot-json with a previously captured snapshot JSON file, or try again later with the same profile.",
     "",
     "Safari and your normal Chrome app are separate sessions. This CLI can only reuse its Playwright Chromium profile.",
     `Chromium profile directory: ${profileDir}`,

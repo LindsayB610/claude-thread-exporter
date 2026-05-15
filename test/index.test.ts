@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildCaptureFailureMessage,
   createSnapshotResponseWaiter,
+  helpText,
   packageName,
   parseArgs,
   parseSnapshotJson,
@@ -37,6 +38,22 @@ describe("CLI args", () => {
       format: "pdf",
       timeoutMs: 120_000,
       force: false
+    });
+  });
+
+  it("names the two Claude input paths in help text", () => {
+    expect(helpText).toContain("Claude share link path");
+    expect(helpText).toContain("Claude snapshot JSON path");
+    expect(helpText).toContain("--claude-url");
+    expect(helpText).toContain("--snapshot-json");
+  });
+
+  it("parses explicit Claude link and snapshot JSON aliases", () => {
+    expect(parseArgs(["--claude-url", "https://claude.ai/share/example"])).toMatchObject({
+      url: "https://claude.ai/share/example"
+    });
+    expect(parseArgs(["--snapshot-json", "fixtures/thread.snapshot.json"])).toMatchObject({
+      snapshotPath: "fixtures/thread.snapshot.json"
     });
   });
 
@@ -110,7 +127,7 @@ describe("CLI args", () => {
     expect(() => parseArgs([])).toThrow("Missing input");
     expect(() =>
       parseArgs(["--url", "https://claude.ai/share/example", "--snapshot", "fixtures/thread.snapshot.json"])
-    ).toThrow("Use either --url or --snapshot");
+    ).toThrow("Use either the Claude share link path or the Claude snapshot JSON path");
   });
 
   it("rejects conflicting destinations", () => {
@@ -481,7 +498,7 @@ describe("capture errors", () => {
 
     expect(message).toContain("browser verification page");
     expect(message).toContain("If Cloudflare verification loops or never completes");
-    expect(message).toContain("Use --snapshot with a previously captured snapshot JSON file");
+    expect(message).toContain("Use --snapshot-json with a previously captured snapshot JSON file");
     expect(message).toContain("Last page title: Just a moment...");
   });
 

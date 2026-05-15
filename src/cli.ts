@@ -81,7 +81,7 @@ function createUrlCaptureLogger(): (message: string) => void {
         [
           "Warning: Claude live URL capture is experimental.",
           "Claude/Cloudflare may block or loop browser verification in Playwright Chromium.",
-          "If that happens, try again later or export from a saved snapshot JSON with --snapshot.",
+          "If that happens, try again later or export from a saved snapshot JSON with --snapshot-json.",
           ""
         ].join("\n")
       );
