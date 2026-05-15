@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildCaptureFailureMessage,
   createSnapshotResponseWaiter,
@@ -14,7 +14,8 @@ import {
   readSnapshotFile,
   resolveDefaultOutPath,
   renderClaudeHtml,
-  renderMarkdown
+  renderMarkdown,
+  writeGitHubFile
 } from "../src/index.js";
 
 const execFileAsync = promisify(execFile);
@@ -26,6 +27,10 @@ describe("package scaffold", () => {
 });
 
 describe("CLI args", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("parses a URL export using the Chromium capture path", () => {
     expect(parseArgs(["--url", "https://claude.ai/share/example", "--format", "pdf"])).toMatchObject({
       url: "https://claude.ai/share/example",
@@ -66,6 +71,29 @@ describe("CLI args", () => {
     });
   });
 
+  it("parses GitHub destination options", () => {
+    expect(
+      parseArgs([
+        "--snapshot",
+        "fixtures/thread.snapshot.json",
+        "--format",
+        "html",
+        "--repo",
+        "LindsayB610/claude-thread-exporter",
+        "--repo-path",
+        "exports/thread.html",
+        "--branch",
+        "exports"
+      ])
+    ).toMatchObject({
+      snapshotPath: "fixtures/thread.snapshot.json",
+      format: "html",
+      repo: "LindsayB610/claude-thread-exporter",
+      repoPath: "exports/thread.html",
+      branch: "exports"
+    });
+  });
+
   it("rejects non-Claude share URLs", () => {
     expect(() => parseArgs(["--url", "https://example.com/share/example"])).toThrow(
       "Expected a Claude share URL"
@@ -89,6 +117,17 @@ describe("CLI args", () => {
     expect(() =>
       parseArgs(["--snapshot", "fixtures/thread.snapshot.json", "--out", "exports/thread.md", "--stdout"])
     ).toThrow("Use either --stdout or --out");
+    expect(() =>
+      parseArgs([
+        "--snapshot",
+        "fixtures/thread.snapshot.json",
+        "--repo",
+        "owner/repo",
+        "--repo-path",
+        "exports/thread.md",
+        "--stdout"
+      ])
+    ).toThrow("Use either --stdout or --repo");
   });
 
   it("rejects invalid option values", () => {
@@ -115,7 +154,157 @@ describe("CLI args", () => {
       parseArgs(["--snapshot", "fixtures/thread.snapshot.json", "--save-snapshot", "../thread.snapshot.json"])
     ).toThrow("--save-snapshot must not contain parent-directory traversal");
   });
+
+  it("validates GitHub destination options before capture", () => {
+    expect(() => parseArgs(["--snapshot", "fixtures/thread.snapshot.json", "--repo", "owner/repo"])).toThrow(
+      "--repo requires --repo-path"
+    );
+    expect(() => parseArgs(["--snapshot", "fixtures/thread.snapshot.json", "--repo-path", "exports/thread.md"])).toThrow(
+      "--repo-path requires --repo"
+    );
+    expect(() => parseArgs(["--snapshot", "fixtures/thread.snapshot.json", "--branch", "exports"])).toThrow(
+      "--branch requires --repo"
+    );
+    expect(() =>
+      parseArgs([
+        "--snapshot",
+        "fixtures/thread.snapshot.json",
+        "--repo",
+        "not-a-slug",
+        "--repo-path",
+        "exports/thread.md"
+      ])
+    ).toThrow("--repo must use owner/name form");
+    expect(() =>
+      parseArgs([
+        "--snapshot",
+        "fixtures/thread.snapshot.json",
+        "--repo",
+        "owner/repo",
+        "--repo-path",
+        "../thread.md"
+      ])
+    ).toThrow("--repo-path must not contain parent-directory traversal");
+    expect(() =>
+      parseArgs([
+        "--snapshot",
+        "fixtures/thread.snapshot.json",
+        "--repo",
+        "owner/repo",
+        "--repo-path",
+        "exports/"
+      ])
+    ).toThrow("--repo-path must be a file path");
+  });
 });
+
+describe("GitHub writer", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.GITHUB_TOKEN;
+  });
+
+  it("requires a GitHub token", async () => {
+    await expect(
+      writeGitHubFile({
+        repo: "owner/repo",
+        repoPath: "exports/thread.md",
+        content: "# Thread",
+        force: false
+      })
+    ).rejects.toThrow("Missing GITHUB_TOKEN");
+  });
+
+  it("creates a new GitHub file through the Contents API", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ message: "Not Found" }, 404))
+      .mockResolvedValueOnce(jsonResponse({ content: { path: "exports/thread.md" } }, 201));
+
+    await writeGitHubFile({
+      repo: "owner/repo",
+      repoPath: "exports/thread.md",
+      branch: "main",
+      content: "# Thread",
+      force: false,
+      token: "token"
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://api.github.com/repos/owner/repo/contents/exports/thread.md?ref=main",
+      expect.objectContaining({ method: "GET" })
+    );
+    const [, putOptions] = fetchMock.mock.calls[1]!;
+    expect(putOptions).toMatchObject({ method: "PUT" });
+    expect(JSON.parse(String((putOptions as RequestInit).body))).toMatchObject({
+      message: "Export Claude conversation to exports/thread.md",
+      content: Buffer.from("# Thread", "utf8").toString("base64"),
+      branch: "main"
+    });
+  });
+
+  it("refuses to overwrite an existing GitHub file without --force", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse({ type: "file", sha: "abc123" }, 200));
+
+    await expect(
+      writeGitHubFile({
+        repo: "owner/repo",
+        repoPath: "exports/thread.md",
+        content: "# Thread",
+        force: false,
+        token: "token"
+      })
+    ).rejects.toThrow("Refusing to overwrite existing GitHub file without --force");
+  });
+
+  it("overwrites an existing GitHub file with --force", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ type: "file", sha: "abc123" }, 200))
+      .mockResolvedValueOnce(jsonResponse({ content: { path: "exports/thread.md" } }, 200));
+
+    await writeGitHubFile({
+      repo: "owner/repo",
+      repoPath: "exports/thread.md",
+      content: new Uint8Array([1, 2, 3]),
+      force: true,
+      token: "token"
+    });
+
+    const [, putOptions] = fetchMock.mock.calls[1]!;
+    expect(JSON.parse(String((putOptions as RequestInit).body))).toMatchObject({
+      content: Buffer.from(new Uint8Array([1, 2, 3])).toString("base64"),
+      sha: "abc123"
+    });
+  });
+
+  it("turns GitHub API failures into user-facing guidance", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ message: "Not Found" }, 404))
+      .mockResolvedValueOnce(jsonResponse({ message: "Reference does not exist" }, 409));
+
+    await expect(
+      writeGitHubFile({
+        repo: "owner/repo",
+        repoPath: "exports/thread.md",
+        branch: "missing",
+        content: "# Thread",
+        force: false,
+        token: "token"
+      })
+    ).rejects.toThrow("Check the branch, path, and overwrite settings");
+  });
+});
+
+function jsonResponse(payload: unknown, status: number): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json"
+    }
+  });
+}
 
 describe("snapshot parsing", () => {
   it("finds direct Claude snapshot payloads", () => {
@@ -515,5 +704,26 @@ describe("local output", () => {
     expect(stdout).toContain("<!doctype html>");
     expect(stdout).toContain('<p class="export-brand">Claude Export</p>');
     expect(stderr).toBe("");
+  });
+
+  it("routes CLI GitHub exports through GITHUB_TOKEN validation", async () => {
+    await expect(
+      execFileAsync(
+        "npx",
+        [
+          "tsx",
+          "src/cli.ts",
+          "--snapshot",
+          "fixtures/shared-links/plain-text-kelp.snapshot.json",
+          "--repo",
+          "owner/repo",
+          "--repo-path",
+          "exports/kelp.md"
+        ],
+        { cwd: process.cwd(), env: { ...process.env, GITHUB_TOKEN: "" } }
+      )
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("Missing GITHUB_TOKEN")
+    });
   });
 });

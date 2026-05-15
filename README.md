@@ -13,6 +13,7 @@ The CLI can:
 - capture Claude's shared-link snapshot JSON from the browser response
 - export the snapshot to Markdown, HTML, or a Claude-styled PDF
 - export from a saved snapshot JSON file for repeatable local work
+- optionally write exports to a GitHub repository path with `GITHUB_TOKEN`
 
 ## Browser Reality
 
@@ -78,6 +79,26 @@ claude-thread-exporter --snapshot "./fixtures/thread.snapshot.json" --format md 
 claude-thread-exporter --snapshot "./fixtures/thread.snapshot.json" --format html --stdout
 ```
 
+Write an export directly to GitHub:
+
+```bash
+GITHUB_TOKEN="..." claude-thread-exporter \
+  --snapshot "./fixtures/thread.snapshot.json" \
+  --format md \
+  --repo "owner/repo" \
+  --repo-path "exports/thread.md"
+```
+
+Overwrite an existing GitHub file:
+
+```bash
+GITHUB_TOKEN="..." claude-thread-exporter \
+  --snapshot "./fixtures/thread.snapshot.json" \
+  --repo "owner/repo" \
+  --repo-path "exports/thread.md" \
+  --force
+```
+
 ## Options
 
 ```text
@@ -87,10 +108,13 @@ claude-thread-exporter --snapshot "./fixtures/thread.snapshot.json" --format htm
 --format <format>       md, html, or pdf. Defaults to md.
 --out <path>            Output path. Defaults to Downloads with a title-based filename.
 --stdout                Print md/html to stdout instead of writing a file.
+--repo <owner/name>     Also write the export to a GitHub repository.
+--repo-path <path>      Repository-relative destination path for --repo.
+--branch <branch>       GitHub branch to write to. Defaults to the repo default branch.
 --profile-dir <path>    Chromium profile directory.
 --timeout <ms>          Capture timeout. Defaults to 120000.
 --save-snapshot <path>  Save the captured snapshot JSON for debugging or repeat exports.
---force                 Overwrite an explicit --out or --save-snapshot file if it exists.
+--force                 Overwrite an explicit --out, --save-snapshot, or GitHub file if it exists.
 -h, --help              Show help.
 ```
 
@@ -114,6 +138,18 @@ PDF exports use a Claude-inspired reading layout with:
 
 Incomplete or internal Claude tool blocks are omitted from polished exports.
 
+## GitHub Export
+
+GitHub export uses the Contents API through Node's built-in `fetch`; it does not require the GitHub CLI.
+
+- set `GITHUB_TOKEN` to a token with Contents write access for the target repo
+- pass `--repo owner/name` and `--repo-path path/in/repo.md`
+- use `--branch branch-name` only when writing to a non-default branch
+- create the branch before running the exporter; the CLI does not create branches
+- use `--force` to overwrite an existing GitHub file
+
+`--repo-path` is explicit by design. The exporter writes exactly where you point it and refuses parent-directory traversal, absolute paths, repeated slashes, and directory paths.
+
 ## Current Limits
 
 - Live capture depends on Claude's current shared-link browser behavior.
@@ -121,6 +157,7 @@ Incomplete or internal Claude tool blocks are omitted from polished exports.
 - Visual artifacts are best-effort. Complete SVG widgets can render; incomplete/stopped widgets cannot.
 - Attached files are not expected to be included in Claude shared snapshots.
 - If Claude changes the snapshot API shape, fixture-backed parser updates may be needed.
+- GitHub export depends on `GITHUB_TOKEN`, repo access, and the target branch already existing.
 
 ## Troubleshooting
 
@@ -155,6 +192,10 @@ You can also save a successful capture for repeat exports:
 ```bash
 claude-thread-exporter --url "https://claude.ai/share/..." --save-snapshot "./thread.snapshot.json"
 ```
+
+### GitHub export fails
+
+If GitHub rejects the write, check that `GITHUB_TOKEN` is set, that the token has Contents write access, that the repository exists, and that any `--branch` you pass already exists.
 
 ## Development
 

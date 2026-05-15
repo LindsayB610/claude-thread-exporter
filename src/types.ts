@@ -44,6 +44,9 @@ export interface CliOptions {
   snapshotPath?: string;
   sourceUrl?: string;
   out?: string;
+  repo?: string;
+  repoPath?: string;
+  branch?: string;
   stdout: boolean;
   format: ExportFormat;
   profileDir?: string;

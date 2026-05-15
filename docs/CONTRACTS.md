@@ -27,3 +27,14 @@ Snapshot artifacts are repair aids and may also be used as explicit export input
 ## Privacy Contract
 
 The core exporter should work only from Claude shared links or snapshot files that the user explicitly provides. It should not require Anthropic API credentials for normal export, and it should document Claude shared-chat limits clearly.
+
+## GitHub Writer Contract
+
+GitHub export is an explicit opt-in destination.
+
+- `--repo` and `--repo-path` must be provided together.
+- `--repo-path` is treated as a repository-relative file path, not a generated folder or inferred destination.
+- Existing GitHub files are protected by default and require `--force` to overwrite.
+- `GITHUB_TOKEN` is read only when a GitHub write is requested.
+- The CLI does not create repositories or branches.
+- GitHub API failures should mention token permissions, repo access, branch existence, path, or overwrite settings when those are likely causes.

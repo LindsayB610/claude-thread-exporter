@@ -5,7 +5,7 @@
 - Repo: `LindsayB610/claude-thread-exporter`
 - Product shape: small open source CLI
 - Primary job: turn a Claude shared-chat snapshot into readable Markdown, HTML, or PDF
-- Current reliable implementation strategy: saved snapshot JSON -> local Markdown/HTML/PDF
+- Current reliable implementation strategy: saved snapshot JSON -> local or GitHub Markdown/HTML/PDF
 - Current experimental implementation strategy: browser-assisted live capture with Playwright Chromium
 
 ## Phase Dashboard
@@ -23,7 +23,7 @@
 | 8 | User-facing error copy | Complete for known failures |
 | 9 | Examples and docs | Complete for V1 |
 | 10 | Release candidate hardening | Complete for RC1 |
-| 11 | GitHub writer | Not started |
+| 11 | GitHub writer | Complete |
 | 12 | Web frontend | Not started |
 
 ## Current Reality
@@ -41,14 +41,14 @@ Observed behavior:
 So V1 is not a pure URL-fetching CLI. The reliable V1 core is:
 
 1. Accept Claude snapshot JSON.
-2. Render Markdown, HTML, or PDF locally from that snapshot.
+2. Render Markdown, HTML, or PDF locally or to an explicit GitHub path from that snapshot.
 
 The experimental live URL path is:
 
 1. Open the Claude shared link in a real Playwright-managed Chromium window.
 2. Reuse a persistent Chromium profile so the user can log into Claude once.
 3. Wait for Claude’s own page to load the snapshot JSON.
-4. Render Markdown, HTML, or PDF locally from that snapshot if capture succeeds.
+4. Render Markdown, HTML, or PDF locally or to an explicit GitHub path from that snapshot if capture succeeds.
 
 Safari cannot be reused for this flow. Normal Chrome app sessions are also separate. The CLI owns its Playwright Chromium profile at:
 
@@ -73,7 +73,7 @@ Target user flow:
 2. Create a shared link.
 3. Run one CLI command with the shared-link URL.
 4. If needed, log into Claude inside the Playwright Chromium window.
-5. Get a readable Markdown, HTML, or PDF export.
+5. Get a readable Markdown, HTML, or PDF export locally, or at an explicit GitHub repo path.
 
 ## Product Boundary
 
@@ -85,6 +85,7 @@ In scope for V1:
 - support Markdown, HTML, and Claude-style PDF output
 - support stdout for Markdown/HTML
 - support local file output
+- support optional GitHub repository output
 - keep normal usage free and local-first
 - provide clear errors for missing Chromium, auth pages, browser checks, and timeouts
 
@@ -96,7 +97,6 @@ Out of scope for V1:
 - background sync or automatic export
 - notebooks, indexing, embeddings, tagging, or search features
 - export of private non-shared chat state
-- GitHub writer
 - web frontend
 
 ## Claude-Specific Product Facts
@@ -135,14 +135,14 @@ Implemented options:
 - `--profile-dir <path>`: custom Playwright Chromium profile directory
 - `--timeout <ms>`: capture timeout; defaults to `120000`
 - `--save-snapshot <path>`: save captured snapshot JSON
-- `--force`: overwrite an explicit `--out` or `--save-snapshot` file if it exists
+- `--force`: overwrite an explicit `--out`, `--save-snapshot`, or GitHub file if it exists
+- `--repo <owner/name>`: write the rendered export to a GitHub repository
+- `--repo-path <path>`: repository-relative path to write when using `--repo`
+- `--branch <branch>`: optional target branch for `--repo`; branch must already exist
 - `-h`, `--help`: show help
 
 Not implemented yet:
 
-- `--repo`
-- `--repo-path`
-- `--branch`
 - `--dry-run`
 - `--debug-html`
 - `--debug-json`
@@ -220,6 +220,7 @@ Overwrite behavior:
 
 - explicit outputs refuse to overwrite existing files by default
 - `--force` permits overwrite for `--out` and `--save-snapshot`
+- GitHub outputs refuse to overwrite existing files unless `--force` is passed
 
 Important files:
 
@@ -228,14 +229,21 @@ Important files:
 
 ### 5. GitHub Writer
 
-Status: not started.
+Status: complete.
 
 Responsibility:
 
-- optional later GitHub file writer
+- optional GitHub file writer
 - mirror the ChatGPT exporter’s explicit repo/path behavior
+- use `GITHUB_TOKEN`
+- refuse overwrites unless `--force` is passed
+- support Markdown, HTML, and PDF GitHub writes
 
-Target version: `v1.1` or later.
+Important files:
+
+- `src/github.ts`
+- `src/cli.ts`
+- `docs/CONTRACTS.md`
 
 ### 6. Web Frontend
 
@@ -281,6 +289,11 @@ Current automated coverage:
 - explicit CLI local output with parent directory creation
 - CLI overwrite refusal and `--force`
 - CLI HTML stdout output
+- GitHub repo/path/branch argument validation
+- GitHub token requirement
+- GitHub create-file path
+- GitHub overwrite refusal and `--force` SHA update
+- GitHub API failure guidance
 - missing Chromium error copy
 - auth-page/browser-session guidance copy
 - browser verification and Cloudflare loop guidance copy
@@ -405,8 +418,9 @@ Mitigation:
 
 - unique default filenames in Downloads
 - explicit overwrite behavior is available with `--force`
+- GitHub overwrite behavior also requires `--force`
 
-Status: implemented for V1 local outputs.
+Status: implemented for V1 local and GitHub outputs.
 
 ## Development Phases
 
@@ -473,12 +487,14 @@ Completed:
 - `--save-snapshot`
 - help text
 - `--force`
+- `--repo`
+- `--repo-path`
+- `--branch`
 - tests for implemented validation
 
 Pending:
 
 - `--dry-run`
-- optional GitHub flags
 - `--title`
 
 ### Phase 4: Snapshot Types And Parsing
@@ -597,9 +613,28 @@ Deferred:
 
 ### Phase 11: GitHub Writer
 
-Status: not started.
+Status: complete.
 
-Target later version: `v1.1`.
+Completed:
+
+- `--repo owner/name`
+- `--repo-path path/in/repo.md`
+- `--branch branch-name`
+- `GITHUB_TOKEN`-backed GitHub Contents API writer
+- exact repository-relative path behavior
+- overwrite protection by default
+- `--force` overwrite behavior for existing GitHub files
+- Markdown and HTML GitHub output
+- PDF GitHub output via temporary local render and binary upload
+- README usage and troubleshooting notes
+- architecture and contract documentation
+- tests for argument validation, token requirement, create, overwrite refusal, forced update, and API failure guidance
+
+Review:
+
+- implementation is scoped to explicit destinations only
+- branches and repositories are not created by the CLI
+- all network behavior is covered through mocked `fetch`; tests do not call GitHub
 
 ### Phase 12: Web Frontend
 
@@ -617,6 +652,7 @@ README should clearly explain:
 - how to install Playwright Chromium if missing
 - how to export to Markdown, HTML, and PDF
 - how to use saved snapshots
+- how to write to GitHub with `GITHUB_TOKEN`
 - that shared chats are snapshots
 - that attached files are not expected in snapshots
 - privacy limitations
@@ -632,4 +668,4 @@ Keep the next work boring and test-led:
 
 - keep regression fixtures current
 - add one code-heavy fixture
-- build the optional GitHub writer as a separate post-RC feature
+- begin Phase 12 only if a web frontend is still worth the complexity

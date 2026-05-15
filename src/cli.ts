@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import {
   HelpRequested,
@@ -10,10 +11,11 @@ import {
   renderClaudeHtml,
   renderMarkdown,
   renderPdf,
-  resolveDefaultOutPath
+  resolveDefaultOutPath,
+  writeGitHubFile
 } from "./index.js";
 import { snapshotTitle } from "./render/shared.js";
-import type { ClaudeSnapshot, RenderInput } from "./types.js";
+import type { ClaudeSnapshot, CliOptions, RenderInput } from "./types.js";
 
 async function main(argv: string[]): Promise<void> {
   let options;
@@ -51,17 +53,23 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  const outPath = options.out ?? (await resolveDefaultOutPath(snapshotTitle(snapshot), options.format));
-  await mkdir(path.dirname(outPath), { recursive: true });
-
-  if (options.format === "pdf") {
-    await assertWritable(outPath, options.force);
-    await renderPdf(input, outPath);
-  } else {
-    await writeTextFile(outPath, renderStdout(input, options.format), options.force);
+  if (options.out || !options.repo) {
+    const outPath = options.out ?? (await resolveDefaultOutPath(snapshotTitle(snapshot), options.format));
+    await writeLocalExport(input, outPath, options);
+    process.stderr.write(`Saved ${options.format.toUpperCase()} export to ${outPath}\n`);
   }
 
-  process.stderr.write(`Saved ${options.format.toUpperCase()} export to ${outPath}\n`);
+  if (options.repo && options.repoPath) {
+    const content = await renderGitHubContent(input, options);
+    await writeGitHubFile({
+      repo: options.repo,
+      repoPath: options.repoPath,
+      branch: options.branch,
+      content,
+      force: options.force
+    });
+    process.stderr.write(`Saved ${options.format.toUpperCase()} export to GitHub: ${options.repo}/${options.repoPath}\n`);
+  }
 }
 
 function createUrlCaptureLogger(): (message: string) => void {
@@ -94,6 +102,34 @@ function renderStdout(input: RenderInput, format: "md" | "html" | "pdf"): string
   }
 
   throw new Error("PDF output cannot be written to stdout. Use --out or omit --stdout.");
+}
+
+async function writeLocalExport(input: RenderInput, outPath: string, options: CliOptions): Promise<void> {
+  await mkdir(path.dirname(outPath), { recursive: true });
+
+  if (options.format === "pdf") {
+    await assertWritable(outPath, options.force);
+    await renderPdf(input, outPath);
+    return;
+  }
+
+  await writeTextFile(outPath, renderStdout(input, options.format), options.force);
+}
+
+async function renderGitHubContent(input: RenderInput, options: CliOptions): Promise<string | Uint8Array> {
+  if (options.format !== "pdf") {
+    return renderStdout(input, options.format);
+  }
+
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "claude-exporter-github-"));
+  const tmpPath = path.join(tmpDir, "export.pdf");
+
+  try {
+    await renderPdf(input, tmpPath);
+    return await readFile(tmpPath);
+  } finally {
+    await rm(tmpDir, { force: true, recursive: true });
+  }
 }
 
 async function writeJson(pathname: string, snapshot: ClaudeSnapshot, force: boolean): Promise<void> {

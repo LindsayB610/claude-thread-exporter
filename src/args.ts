@@ -13,10 +13,13 @@ Options:
   --format <format>       md, html, or pdf. Defaults to md.
   --out <path>            Output path. Defaults to Downloads with a title-based filename.
   --stdout                Print md/html to stdout instead of writing a file.
+  --repo <owner/name>     Also write the export to a GitHub repository.
+  --repo-path <path>      Repository-relative destination path for --repo.
+  --branch <branch>       GitHub branch to write to. Defaults to the repo default branch.
   --profile-dir <path>    Chromium profile directory. Defaults to ~/.claude-thread-exporter/chromium-profile.
   --timeout <ms>          Capture timeout. Defaults to 120000.
   --save-snapshot <path>  Save the captured snapshot JSON for debugging or repeat exports.
-  --force                 Overwrite an explicit --out or --save-snapshot file if it exists.
+  --force                 Overwrite an explicit --out, --save-snapshot, or GitHub file if it exists.
   -h, --help              Show help.
 
 Browser note:
@@ -24,6 +27,10 @@ Browser note:
   in Playwright Chromium. Snapshot JSON export is the reliable local path.
   Safari sessions cannot be reused by Playwright.
   If Chromium is missing, run: npx playwright install chromium
+
+GitHub note:
+  GitHub export uses GITHUB_TOKEN and writes exactly to --repo-path.
+  The branch must already exist; this CLI does not create branches.
 `;
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -54,6 +61,15 @@ export function parseArgs(argv: string[]): CliOptions {
         break;
       case "--stdout":
         options.stdout = true;
+        break;
+      case "--repo":
+        options.repo = readValue(argv, ++index, arg);
+        break;
+      case "--repo-path":
+        options.repoPath = readValue(argv, ++index, arg);
+        break;
+      case "--branch":
+        options.branch = readValue(argv, ++index, arg);
         break;
       case "--profile-dir":
         options.profileDir = readValue(argv, ++index, arg);
@@ -87,9 +103,15 @@ export function parseArgs(argv: string[]): CliOptions {
     throw new Error("Use either --stdout or --out, not both.");
   }
 
+  if (options.stdout && options.repo) {
+    throw new Error("Use either --stdout or --repo, not both.");
+  }
+
   if (options.stdout && options.format === "pdf") {
     throw new Error("--stdout is only supported for md and html exports.");
   }
+
+  validateGitHubOptions(options);
 
   if (options.url) {
     validateClaudeShareUrl(options.url);
@@ -161,5 +183,54 @@ function validateOutputPath(value: string, flag: string): void {
 
   if (normalized.endsWith("/")) {
     throw new Error(`${flag} must be a file path, not a directory.`);
+  }
+}
+
+function validateGitHubOptions(options: CliOptions): void {
+  if (options.repo && !options.repoPath) {
+    throw new Error("--repo requires --repo-path.");
+  }
+
+  if (options.repoPath && !options.repo) {
+    throw new Error("--repo-path requires --repo.");
+  }
+
+  if (options.branch && !options.repo) {
+    throw new Error("--branch requires --repo.");
+  }
+
+  if (options.repo && !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(options.repo)) {
+    throw new Error("--repo must use owner/name form.");
+  }
+
+  if (options.repoPath) {
+    validateRepoPath(options.repoPath);
+  }
+}
+
+function validateRepoPath(value: string): void {
+  if (value.trim().length === 0) {
+    throw new Error("--repo-path must not be empty.");
+  }
+
+  if (value.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(value)) {
+    throw new Error("--repo-path must be a repository-relative file path.");
+  }
+
+  if (value.includes("\\")) {
+    throw new Error("--repo-path must use forward slashes.");
+  }
+
+  if (value.includes("//")) {
+    throw new Error("--repo-path must not contain repeated slashes.");
+  }
+
+  if (value.endsWith("/")) {
+    throw new Error("--repo-path must be a file path, not a directory.");
+  }
+
+  const segments = value.split("/");
+  if (segments.some((segment) => segment.length === 0 || segment === "..")) {
+    throw new Error("--repo-path must not contain parent-directory traversal.");
   }
 }
