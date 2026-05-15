@@ -294,6 +294,7 @@ Current automated coverage:
 - GitHub create-file path
 - GitHub overwrite refusal and `--force` SHA update
 - GitHub API failure guidance
+- GitHub non-file path rejection
 - missing Chromium error copy
 - auth-page/browser-session guidance copy
 - browser verification and Cloudflare loop guidance copy
@@ -495,6 +496,8 @@ Completed:
 Pending:
 
 - `--dry-run`
+- `--debug-html`
+- `--debug-json`
 - `--title`
 
 ### Phase 4: Snapshot Types And Parsing
@@ -629,6 +632,7 @@ Completed:
 - README usage and troubleshooting notes
 - architecture and contract documentation
 - tests for argument validation, token requirement, create, overwrite refusal, forced update, and API failure guidance
+- tests for auth/repo-access errors and non-file GitHub paths
 
 Review:
 

@@ -195,6 +195,36 @@ describe("CLI args", () => {
         "exports/"
       ])
     ).toThrow("--repo-path must be a file path");
+    expect(() =>
+      parseArgs([
+        "--snapshot",
+        "fixtures/thread.snapshot.json",
+        "--repo",
+        "owner/repo",
+        "--repo-path",
+        "/exports/thread.md"
+      ])
+    ).toThrow("--repo-path must be a repository-relative file path");
+    expect(() =>
+      parseArgs([
+        "--snapshot",
+        "fixtures/thread.snapshot.json",
+        "--repo",
+        "owner/repo",
+        "--repo-path",
+        "exports\\thread.md"
+      ])
+    ).toThrow("--repo-path must use forward slashes");
+    expect(() =>
+      parseArgs([
+        "--snapshot",
+        "fixtures/thread.snapshot.json",
+        "--repo",
+        "owner/repo",
+        "--repo-path",
+        "exports//thread.md"
+      ])
+    ).toThrow("--repo-path must not contain repeated slashes");
   });
 });
 
@@ -294,6 +324,34 @@ describe("GitHub writer", () => {
         token: "token"
       })
     ).rejects.toThrow("Check the branch, path, and overwrite settings");
+  });
+
+  it("explains GitHub auth and repo access failures", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse({ message: "Bad credentials" }, 401));
+
+    await expect(
+      writeGitHubFile({
+        repo: "owner/repo",
+        repoPath: "exports/thread.md",
+        content: "# Thread",
+        force: false,
+        token: "token"
+      })
+    ).rejects.toThrow("Check GITHUB_TOKEN permissions and repo access");
+  });
+
+  it("rejects GitHub paths that are not writable files", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse({ type: "dir", sha: "abc123" }, 200));
+
+    await expect(
+      writeGitHubFile({
+        repo: "owner/repo",
+        repoPath: "exports",
+        content: "# Thread",
+        force: true,
+        token: "token"
+      })
+    ).rejects.toThrow("GitHub path is not a writable file");
   });
 });
 

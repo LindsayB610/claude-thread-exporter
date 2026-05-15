@@ -29,7 +29,7 @@ The first live shared link returns a public React shell from `/share/:snapshotUu
 
 Direct `curl` and headless Chromium requests to that snapshot API currently receive a Cloudflare managed challenge. A headed Playwright run can load the shared page and capture the snapshot JSON after browser verification.
 
-Extractor V1 targets the snapshot JSON shape first. Live URL export is browser-assisted but experimental: the CLI opens a persistent Playwright Chromium profile, waits for Claude's page to load `/api/chat_snapshots/...`, and exports the captured payload locally. Safari and normal Chrome application sessions are not reused.
+Extractor V1 targets the snapshot JSON shape first. Live URL export is browser-assisted but experimental: the CLI opens a persistent Playwright Chromium profile, waits for Claude's page to load `/api/chat_snapshots/...`, and renders the captured payload to the requested explicit destination. Safari and normal Chrome application sessions are not reused.
 
 The Playwright path has passed live smoke tests, but Claude/Cloudflare can also put the browser into a verification loop. When that happens, `--snapshot` is the reliable local export path until a non-Playwright capture strategy exists.
 
