@@ -589,7 +589,7 @@ Completed:
 - release gates passed: test, typecheck, build, pack dry-run, production audit
 - final live URL smoke attempted; Claude/Cloudflare showed browser verification loop, matching the documented experimental-path limitation
 - current release-candidate work committed and pushed to `main`
-- RC marker/tag prepared for `v0.1.0-rc.1`
+- RC marker/tag `v0.1.0-rc.1` created and pushed
 
 Deferred:
 
@@ -632,5 +632,4 @@ Keep the next work boring and test-led:
 
 - keep regression fixtures current
 - add one code-heavy fixture
-- do a final docs/examples review
-- commit and push the current release-candidate state
+- build the optional GitHub writer as a separate post-RC feature
