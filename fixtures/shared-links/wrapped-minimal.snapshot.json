@@ -1,0 +1,23 @@
+{
+  "data": {
+    "snapshot": {
+      "uuid": "snapshot-wrapped-minimal",
+      "snapshot_name": "Wrapped Minimal Snapshot",
+      "created_at": "2026-05-15T17:00:00.000000Z",
+      "updated_at": "2026-05-15T17:00:00.000000Z",
+      "chat_messages": [
+        {
+          "uuid": "message-user",
+          "sender": "human",
+          "created_at": "2026-05-15T17:00:00.000000Z",
+          "content": [
+            {
+              "type": "text",
+              "text": "Hello from a wrapped fixture."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

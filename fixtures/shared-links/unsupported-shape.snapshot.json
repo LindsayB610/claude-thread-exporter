@@ -1,0 +1,10 @@
+{
+  "uuid": "not-a-claude-snapshot",
+  "snapshot_name": "Unsupported Shape",
+  "messages": [
+    {
+      "role": "user",
+      "content": "This intentionally omits chat_messages."
+    }
+  ]
+}

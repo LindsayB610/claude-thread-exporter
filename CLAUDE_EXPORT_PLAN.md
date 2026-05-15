@@ -1,16 +1,66 @@
-# Claude Thread Exporter Plan V1
+# Claude Thread Exporter Plan V3
 
 ## Project
 
-- Proposed tool repo: `LindsayB610/claude-thread-exporter`
+- Repo: `LindsayB610/claude-thread-exporter`
 - Product shape: small open source CLI
-- Primary job: turn a Claude shared-chat snapshot into readable Markdown
+- Primary job: turn a Claude shared-chat snapshot into readable Markdown, HTML, or PDF
+- Current reliable implementation strategy: saved snapshot JSON -> local Markdown/HTML/PDF
+- Current experimental implementation strategy: browser-assisted live capture with Playwright Chromium
+
+## Phase Dashboard
+
+| Phase | Focus | Status |
+| --- | --- | --- |
+| 0 | Repo foundation | Complete |
+| 1 | Claude fixture discovery | Complete |
+| 2 | Browser-assisted live capture decision | Implemented, experimental |
+| 3 | CLI contract and validation | Complete for V1 |
+| 4 | Snapshot types and parsing | Complete for V1 |
+| 5 | Markdown renderer | Complete for V1 |
+| 6 | HTML/PDF renderer | Complete for V1 |
+| 7 | Local output and CLI execution | Complete for V1 |
+| 8 | User-facing error copy | Complete for known failures |
+| 9 | Examples and docs | Complete for V1 |
+| 10 | Release candidate hardening | In progress |
+| 11 | GitHub writer | Not started |
+| 12 | Web frontend | Not started |
+
+## Current Reality
+
+The first assumption was that a Claude shared link might be fetchable with ordinary HTTP. Live validation showed that is not reliable.
+
+Observed behavior:
+
+- `GET /share/:snapshotUuid` returns the Claude React shell, not the transcript payload.
+- The browser app fetches the real payload from `/api/chat_snapshots/:snapshotUuid?rendering_mode=messages&render_all_tools=true`.
+- Direct `curl`, browser-ish HTTP headers, cookie-jar replay, and headless Chromium hit Cloudflare managed challenge behavior.
+- Headed Playwright Chromium can sometimes load the shared page and capture the snapshot JSON response.
+- Claude/Cloudflare can also put Playwright Chromium into a verification loop that repeated human clicks do not resolve.
+
+So V1 is not a pure URL-fetching CLI. The reliable V1 core is:
+
+1. Accept Claude snapshot JSON.
+2. Render Markdown, HTML, or PDF locally from that snapshot.
+
+The experimental live URL path is:
+
+1. Open the Claude shared link in a real Playwright-managed Chromium window.
+2. Reuse a persistent Chromium profile so the user can log into Claude once.
+3. Wait for Claude’s own page to load the snapshot JSON.
+4. Render Markdown, HTML, or PDF locally from that snapshot if capture succeeds.
+
+Safari cannot be reused for this flow. Normal Chrome app sessions are also separate. The CLI owns its Playwright Chromium profile at:
+
+```text
+~/.claude-thread-exporter/chromium-profile
+```
 
 ## Goal
 
-Build a lightweight local-first exporter for short, intentional Claude chats.
+Build a lightweight local-first exporter for intentional Claude shared chats.
 
-This implementation should stay free for normal use:
+The implementation should stay free for normal use:
 
 - no required paid SaaS components
 - no required paid API usage
@@ -19,40 +69,45 @@ This implementation should stay free for normal use:
 
 Target user flow:
 
-1. Finish a conversation in Claude
-2. Create a shared link for that conversation
-3. Run one CLI command with the shared-link URL
-4. Get a readable Markdown or PDF export you control
+1. Finish a conversation in Claude.
+2. Create a shared link.
+3. Run one CLI command with the shared-link URL.
+4. If needed, log into Claude inside the Playwright Chromium window.
+5. Get a readable Markdown, HTML, or PDF export.
 
 ## Product Boundary
 
-This should remain deliberately narrow at first.
-
-In scope:
+In scope for V1:
 
 - export one Claude shared-chat snapshot at a time
-- support short, mostly text-first chats well
-- preserve readable structure, especially code blocks
-- support stdout, local-file, optional GitHub, and later PDF output
+- support experimental URL capture via headed Playwright Chromium
+- support saved snapshot JSON as an offline input
+- support Markdown, HTML, and Claude-style PDF output
+- support stdout for Markdown/HTML
+- support local file output
 - keep normal usage free and local-first
+- provide clear errors for missing Chromium, auth pages, browser checks, and timeouts
 
-Out of scope:
+Out of scope for V1:
 
+- pure HTTP shared-link fetching
 - guaranteed durability against future Claude page changes
 - perfect fidelity for every Claude artifact type
 - background sync or automatic export
 - notebooks, indexing, embeddings, tagging, or search features
 - export of private non-shared chat state
+- GitHub writer
+- web frontend
 
 ## Claude-Specific Product Facts
 
-These points are based on Anthropic’s current public help documentation and should be treated as product assumptions until verified against live shared pages:
+These are current product assumptions and should stay documented:
 
 - shared chats are snapshots of messages sent before sharing
 - messages sent after sharing are not automatically included unless the snapshot is updated and shared again
 - shared snapshots can include artifacts
-- attached files are **not** included in the shared snapshot
-- MCP raw tool data remains hidden; only final visible output is shared
+- attached files are not expected to be included in the shared snapshot
+- raw hidden tool/MCP data is not the product target; visible output is
 - Team and Enterprise sharing may be organization-limited rather than public
 
 Sources:
@@ -61,616 +116,521 @@ Sources:
 - [Manage project visibility and sharing | Claude Help Center](https://support.claude.com/en/articles/9519189-project-visibility-and-sharing)
 - [What are artifacts and how do I use them? | Claude Help Center](https://support.claude.com/en/articles/9487310-what-are-artifacts-and-how-do-i-use-them)
 
-## Core Product Decisions
-
-### Why Shared Links
-
-For this product, the Claude shared-chat snapshot is the right source of truth because it is:
-
-- user-controlled
-- publicly viewable when intentionally shared
-- snapshot-based
-- available without requiring API access or account integration
-
-This keeps the tool simple and avoids coupling the first version to Anthropic API auth or paid API usage.
-
-### Default Output Policy
-
-Default behavior should match the current ChatGPT exporter:
-
-- save to a unique file in `Downloads`
-
-Optional explicit behaviors:
-
-- `--stdout` prints Markdown to Terminal
-- `--out <path>` writes to a local file
-- `--repo <owner/name>` and `--repo-path <path>` write to GitHub
-
-The tool must never default to writing into its own source repo.
-
-### Cost Constraint
-
-The implementation must stay free for normal use.
-
-That means:
-
-- no required hosted service run by the maintainer
-- no required database
-- no paid queue/worker/serverless dependency
-- no required Anthropic API key
-- no paid OCR/parsing/AI API dependency
-
-Acceptable optional dependencies:
-
-- GitHub, only when the user explicitly opts into repo export
-- a GitHub personal access token, only for that optional path
-
-### Repo Strategy
-
-Recommended repo:
-
-- `LindsayB610/claude-thread-exporter`
-
-Exported artifacts should live only where the user explicitly chooses.
-
-### Open Source Posture
-
-The tool should be public and OSS licensed.
-
-Recommended:
-
-- MIT License
-
-First public release should include:
-
-- `LICENSE`
-- `README.md`
-- privacy and limitation notes specific to Claude shared chats
-
-## Success Criteria
-
-The POC is successful if:
-
-- one real Claude shared link can be fetched reliably
-- extracted turns can be normalized into a stable internal model
-- Markdown output is readable and useful for short text-heavy chats
-- code blocks remain readable
-- stdout mode works without side effects
-- local file mode works with explicit paths
-- parser failures are diagnosable when Claude’s shared page shape changes
-
-The first release candidate is successful if:
-
-- the local-only exporter path is reliable end to end
-- fixture-based extractor, normalizer, and renderer tests are stable
-- at least one manual live-link smoke test succeeds before release
-
-GitHub write mode is valuable but not required for the first release candidate.
-Claude-style PDF export is valuable but not required for the first release candidate.
-
-## CLI Contract
-
-### Command
+## Implemented CLI Contract
 
 ```bash
-claude-thread-exporter \
-  --url "https://claude.ai/share/..." \
-  --stdout
+claude-thread-exporter --url "https://claude.ai/share/..."
+claude-thread-exporter --url "https://claude.ai/share/..." --format pdf
+claude-thread-exporter --snapshot ./snapshot.json --source "https://claude.ai/share/..." --format pdf
 ```
 
-```bash
-claude-thread-exporter \
-  --url "https://claude.ai/share/..." \
-  --out "./conversation-exports/2026-04-10-claude-chat.md"
-```
+Implemented options:
 
-```bash
-claude-thread-exporter \
-  --url "https://claude.ai/share/..." \
-  --repo "LindsayB610/chat-exports" \
-  --repo-path "conversation-exports/2026-04-10-claude-chat.md"
-```
+- `--url <url>`: experimental capture of a Claude shared link with headed Playwright Chromium
+- `--snapshot <path>`: export from saved Claude snapshot JSON
+- `--source <url>`: source URL to show in exports when using `--snapshot`
+- `--format <format>`: `md`, `html`, or `pdf`; defaults to `md`
+- `--out <path>`: write output to a local path
+- `--stdout`: print Markdown/HTML to stdout
+- `--profile-dir <path>`: custom Playwright Chromium profile directory
+- `--timeout <ms>`: capture timeout; defaults to `120000`
+- `--save-snapshot <path>`: save captured snapshot JSON
+- `--force`: overwrite an explicit `--out` or `--save-snapshot` file if it exists
+- `-h`, `--help`: show help
 
-### Required Flag
+Not implemented yet:
 
-- `--url`
-
-### Optional Flags
-
-- `--stdout`
-- `--out <path>`
-- `--repo <owner/name>`
-- `--repo-path <path>`
-- `--title <title>`
-- `--branch <name>`
+- `--repo`
+- `--repo-path`
+- `--branch`
 - `--dry-run`
-- `--debug-html <path>`
-- `--debug-json <path>`
-- `--force`
-
-### Flag Semantics
-
-- With no destination flags, save to a unique file in `Downloads`
-- `--stdout` prints Markdown to Terminal instead of only saving a file
-- `--out` writes to a local file and does not also print to stdout unless `--stdout` is set
-- `--repo` requires `--repo-path`
-- `--repo-path` without `--repo` is an error
-- `--dry-run` performs fetch, extract, normalize, and render, but performs no transcript-destination writes
-- `--debug-html` and `--debug-json` may still write local debug artifacts during `--dry-run`
-- `--force` allows overwrite behavior for explicit destinations
-
-### Behavior Matrix
-
-- `--url` only: save a unique Markdown file in `Downloads`
-- `--url --stdout`: print Markdown to stdout
-- `--url --out <path>`: write Markdown to local file only
-- `--url --out <path> --stdout`: write local file and print Markdown to stdout
-- `--url --dry-run`: print Markdown to stdout and perform no transcript-destination writes
-- `--url --dry-run --out <path>`: print Markdown to stdout and do not write the transcript file
-- `--url --dry-run --repo ... --repo-path ...`: print Markdown to stdout and do not call GitHub
-- `--url --debug-html <path>`: write debug HTML and follow normal transcript output behavior
-- `--url --debug-json <path>`: write debug JSON and follow normal transcript output behavior
-
-### Path Validation
-
-Use the same path rules as the ChatGPT exporter:
-
-- local paths must not be empty
-- directory-only paths are invalid
-- reject parent-directory traversal like `..`
-- validate before any network fetch
-
-GitHub path rules:
-
-- must be repository-relative
-- must not begin with `/`
-- must not contain backslashes
-- must not contain repeated slashes
-- must not contain `..`
-- must not end with `/`
+- `--debug-html`
+- `--debug-json`
+- `--title`
 
 ## Architecture
 
-### 1. Fetcher
+### 1. Browser Capture
+
+Status: implemented but experimental.
 
 Responsibility:
 
-- fetch Claude shared-chat HTML
-- follow redirects
-- capture final URL, status code, and debug-relevant metadata
+- open Claude shared link in headed Playwright Chromium
+- use persistent profile for auth reuse
+- wait for `/api/chat_snapshots/...` response
+- parse captured JSON into a Claude snapshot object
+- classify user-facing capture failures
+- treat looping verification as a live-capture blocker, not user error
 
-Notes:
+Important files:
 
-- start with standard HTTP fetch
-- avoid browser automation at fetch time unless basic HTTP proves insufficient
+- `src/capture.ts`
+- `src/snapshot.ts`
+- `docs/FIXTURE_CAPTURE.md`
 
-### 2. Extractor
+### 2. Snapshot Input
 
-Responsibility:
-
-- parse the Claude shared-chat page
-- locate serialized conversation data
-- return raw conversation-shaped data plus extraction metadata
-
-Claude-specific notes:
-
-- shared snapshots include visible conversation content
-- artifacts may be present and may need separate handling
-- files are not included, so file references should degrade gracefully
-- MCP raw data should not be expected in the shared page
-
-Risk:
-
-- this is still the highest-risk module
-
-### 3. Normalizer
+Status: complete for V1.
 
 Responsibility:
 
-- convert raw Claude payload data into a stable internal transcript model
+- parse saved Claude snapshot JSON
+- support direct snapshot payloads and simple wrapper objects
+- make fixture-based development possible without live browser runs
 
-Must support:
+Important files:
 
-- `user` turns
-- `assistant` turns
-- text blocks
-- code blocks
-- graceful placeholders for unsupported content
-- optional attachment/artifact metadata when visible in shared output
+- `src/snapshot.ts`
+- `fixtures/shared-links/*.snapshot.json`
 
-### 4. Renderer
+### 3. Rendering
 
-Responsibility:
-
-- render normalized turns into readable Markdown
-
-Requirements:
-
-- preserve readable structure
-- preserve code fences
-- preserve heading/list/quote structure where recoverable
-- keep output deterministic for golden tests
-
-### 5. Local Writer
+Status: complete for V1.
 
 Responsibility:
 
-- save to explicit local paths
+- render readable Markdown
+- render Claude-style HTML
+- render PDF from HTML through Playwright
+- include title, source, conversation date/range, and message count
+- hyperlink source URLs and plain URLs in PDF/HTML output
+- render complete SVG visual artifacts where recoverable
+- omit incomplete/internal tool blocks from polished exports
+
+Important files:
+
+- `src/render/markdown.ts`
+- `src/render/html.ts`
+- `src/render/pdf.ts`
+- `src/render/shared.ts`
+
+### 4. Local Output
+
+Status: complete for V1.
+
+Responsibility:
+
+- write explicit `--out` paths
 - create parent directories
-- refuse overwrite unless `--force`
+- default to unique Downloads filename when no output path is supplied
+- support stdout for Markdown/HTML
 
-### 6. GitHub Writer
+Overwrite behavior:
+
+- explicit outputs refuse to overwrite existing files by default
+- `--force` permits overwrite for `--out` and `--save-snapshot`
+
+Important files:
+
+- `src/cli.ts`
+- `src/output-path.ts`
+
+### 5. GitHub Writer
+
+Status: not started.
 
 Responsibility:
 
-- create or update a file in a user-selected GitHub repo path
+- optional later GitHub file writer
+- mirror the ChatGPT exporter’s explicit repo/path behavior
 
-This should mirror the existing ChatGPT exporter design.
+Target version: `v1.1` or later.
 
-## Naming and Title Strategy
+### 6. Web Frontend
 
-### Title Resolution
+Status: not started.
 
-Priority:
+Responsibility:
 
-1. explicit `--title`
-2. extracted Claude chat title, if available
-3. fallback generated title like `claude-chat-export`
+- optional later non-technical paste-link frontend
+- must clearly document whether any conversation data touches hosted infrastructure
 
-### Slug Rules
-
-- lowercase
-- spaces become `-`
-- collapse repeated separators
-- trim punctuation-heavy edges
-
-### Filename Pattern
-
-- `<slug>-export.md`
-- `<slug>-export-2.md` if needed for uniqueness
-
-## Failure Modes
-
-### 1. Claude shared-page shape changes
-
-Mitigation:
-
-- keep extractor isolated
-- save debug HTML/JSON artifacts
-- maintain fixture-driven tests
-
-### 2. Unsupported artifacts or rich content
-
-Mitigation:
-
-- degrade clearly
-- preserve useful metadata when possible
-- do not invent unsupported content
-
-### 3. Duplicate exports
-
-Mitigation:
-
-- unique default filenames in `Downloads`
-- explicit overwrite behavior only via `--force`
-
-### 4. GitHub write failure
-
-Mitigation:
-
-- clear user-facing errors
-- do not mask successful local rendering when GitHub write fails
-
-### 5. Privacy mistakes
-
-Mitigation:
-
-- document that shared chats are snapshots
-- document that files are not included in the shared snapshot
-- document that raw MCP data is not shared
+Target version: later than CLI release.
 
 ## Testing Strategy
 
-### Recommended Development Style
+We are keeping the build in “TDD vibes” mode:
 
-Use the same structure that worked for the ChatGPT exporter:
+1. add or adjust the smallest useful test
+2. implement narrowly
+3. run `npm test`
+4. run `npm run check`
+5. run `npm run build` for CLI-affecting changes
+6. update docs only after behavior is true
 
-- isolated unit tests for arg parsing, fetcher, extractor, normalizer, renderer, writers
-- fixture-based extractor tests
-- golden Markdown tests
-- integration tests for local export path
+Current automated coverage:
 
-### Fixture Hygiene
+- package export sanity
+- CLI arg parsing and validation
+- Claude URL validation
+- PDF/stdout validation
+- explicit output path validation
+- snapshot parsing for direct, wrapped, and real fixture payloads
+- unsupported and malformed snapshot rejection
+- browser snapshot response wait/cancel cleanup
+- renderer metadata and link behavior
+- Markdown code fence preservation while demoting assistant headings
+- Markdown visual placeholders and raw tool-block omission
+- HTML/PDF header shape
+- HTML/PDF assistant Markdown links
+- HTML/PDF real fixture SVG rendering and raw tool-block omission
+- HTML/PDF raw assistant HTML escaping
+- HTML/PDF SVG widget sanitization
+- default output path uniqueness
+- explicit CLI local output with parent directory creation
+- CLI overwrite refusal and `--force`
+- CLI HTML stdout output
+- missing Chromium error copy
+- auth-page/browser-session guidance copy
+- browser verification and Cloudflare loop guidance copy
+- generic snapshot timeout guidance copy
 
-Collect representative Claude shared-chat fixtures and sanitize them for public commit.
-
-Fixture set should include:
-
-- plain text chat
-- code-heavy chat
-- artifact-bearing chat
-- malformed or missing-payload case
-
-### Unit Tests
-
-Need:
-
-- argument validation tests
-- extractor shape tests
-- normalizer tests
-- renderer tests
-- local writer tests
-- GitHub writer tests
-
-### Integration Tests
-
-Need:
-
-- fixture HTML -> extract -> normalize -> render -> local file
-- dry-run behavior
-- stdout behavior
-
-### Test Gates
-
-Required:
+Current test gates:
 
 - `npm test`
 - `npm run check`
+- `npm run build`
 
-### Smoke Test
+Manual smoke coverage performed:
 
-Before release:
+- compiled CLI exports from saved snapshot fixtures
+- compiled CLI renders PDF from saved snapshot fixture
+- compiled CLI PDF smoke passed after Phase 6 renderer hardening
+- examples regenerated through the built CLI
+- V1 fixtures/examples passed a public-safety scan for obvious private fields and credentials
+- live URL smoke succeeded once against the kelp Claude share link with Playwright Chromium
+- later live URL smoke hit a Claude/Cloudflare verification loop, proving `--url` is not release-reliable
 
-- one real Claude shared link must export successfully
+## Fixtures
+
+Committed public-safe fixtures:
+
+- `fixtures/shared-links/plain-text-kelp.snapshot.json`
+- `fixtures/shared-links/underground-city.snapshot.json`
+- `fixtures/shared-links/wrapped-minimal.snapshot.json`
+- `fixtures/shared-links/unsupported-shape.snapshot.json`
+- `fixtures/shared-links/malformed.snapshot.json`
+- `fixtures/shared-links/code-block.snapshot.json`
+
+Current fixture coverage:
+
+- short essay-style text conversation
+- longer multi-turn conversation
+- Claude interactive question blocks
+- visual widget/tool blocks
+- complete SVG visual artifacts
+- incomplete/stopped visual artifacts
+- wrapped snapshot payload discovery
+- unsupported-shape rejection
+- malformed JSON rejection
+- code fence preservation in Markdown rendering
+
+Still useful to add later:
+
+- code-heavy Claude conversation
+
+## Examples
+
+The examples folder now mirrors the ChatGPT exporter shape:
+
+- `examples/kelp-forests.md`
+- `examples/kelp-forests.pdf`
+- `examples/underground-city.md`
+- `examples/underground-city.pdf`
+
+These are generated through the real CLI from saved snapshot fixtures.
+
+## Failure Modes
+
+### Missing Playwright Chromium
+
+Mitigation:
+
+- emit a specific error
+- tell the user to run `npx playwright install chromium`
+
+Status: implemented and tested.
+
+### User Is Not Logged Into Claude
+
+Expected behavior:
+
+- Playwright Chromium opens Claude auth/sign-in flow
+- user completes auth in that window
+- user reruns the command
+- CLI reuses the authenticated profile
+
+Mitigation:
+
+- timeout error inspects final page URL/title
+- auth-page guidance tells the user Safari and normal Chrome sessions do not carry over
+
+Status: implemented and tested.
+
+### Browser Check / Cloudflare Challenge
+
+Mitigation:
+
+- tell the user to complete the browser check inside Playwright Chromium
+- if verification loops, tell the user live capture is blocked and to use `--snapshot`
+- reuse the same profile afterward when verification succeeds
+
+Status: implemented, but live capture remains experimental.
+
+### Claude Snapshot Shape Changes
+
+Mitigation:
+
+- keep snapshot parsing isolated
+- rely on committed fixtures
+- support `--save-snapshot` for repair/debug
+- add regression fixtures before broadening support claims
+
+Status: partially implemented.
+
+### Unsupported Or Incomplete Artifacts
+
+Mitigation:
+
+- render complete SVG widgets when available
+- omit incomplete/internal tool blocks from polished exports
+- avoid alarming “omitted block” notes in user-facing PDFs
+
+Status: implemented for observed fixtures.
+
+### Duplicate / Overwrite Behavior
+
+Mitigation:
+
+- unique default filenames in Downloads
+- explicit overwrite behavior is available with `--force`
+
+Status: implemented for V1 local outputs.
 
 ## Development Phases
 
 ### Phase 0: Repo Foundation
 
-Set up:
+Status: complete.
 
-- repo scaffold
-- `README.md`
-- `LICENSE`
-- `.gitignore`
-- TypeScript and test tooling
-- `src/` and `test/` layout
+Completed:
 
-Done when:
+- public repo scaffold
+- MIT license
+- TypeScript, Vitest, build script, package metadata
+- `src/`, `test/`, `docs/`, `examples/`, and `fixtures/` layout
+- public GitHub repo created and initial scaffold pushed
+- baseline `npm test` and `npm run check`
 
-- repo can build, typecheck, and run tests
+### Phase 1: Claude Fixture Discovery Spike
 
-### Phase 1: CLI Contract
+Status: complete.
 
-Build:
+Completed:
 
-- arg parsing
-- destination validation
-- path validation
-- dry-run/debug semantics
+- inspected real Claude shared links
+- proved plain HTTP/direct API fetch is not reliable
+- proved headed Playwright Chromium can capture snapshot JSON
+- documented findings in architecture and fixture docs
+- captured and sanitized two public-safe snapshot fixtures
 
-Done when:
+### Phase 2: Browser-Assisted Capture Decision
 
-- invalid flag combinations fail cleanly
-- default save behavior works
-- tests cover CLI contract
+Status: implemented but not release-reliable.
 
-### Phase 2: Core Types and Contracts
+Completed:
 
-Build:
+- chose persistent Playwright Chromium as V1 live URL strategy
+- documented Safari/normal Chrome session limitation
+- added `--profile-dir`
+- added clear capture logging
+- added `--save-snapshot`
+- live smoke test passed once
+- later live smoke hit looping Claude/Cloudflare verification
 
-- internal types for fetched/extracted/normalized/rendered data
-- debug artifact contract
-- compatibility notes for fixtures
+Decision:
 
-Done when:
+- keep `--url` as experimental
+- treat `--snapshot` as the reliable V1 path
 
-- extractor and renderer interfaces are explicit
+### Phase 3: CLI Contract And Argument Validation
 
-### Phase 3: Pipeline Skeleton
+Status: complete for V1.
 
-Build:
+Completed:
 
-- fetch -> extract -> normalize -> render -> emit
-- dependency injection seams for tests
+- `parseArgs()`
+- Claude share URL validation
+- `--url`
+- `--snapshot`
+- `--source`
+- `--format md|html|pdf`
+- `--out`
+- `--stdout`
+- `--profile-dir`
+- `--timeout`
+- `--save-snapshot`
+- help text
+- `--force`
+- tests for implemented validation
 
-Done when:
+Pending:
 
-- pipeline stages are wired and independently testable
+- `--dry-run`
+- optional GitHub flags
+- `--title`
 
-### Phase 4: Fetcher and Debug Output
+### Phase 4: Snapshot Types And Parsing
 
-Build:
+Status: complete for V1.
 
-- shared-link fetcher
-- final URL and status capture
-- `--debug-html`
-- `--debug-json`
+Completed:
 
-Done when:
+- Claude snapshot/message/content types
+- saved snapshot JSON parser
+- wrapped payload discovery
+- fixture-backed snapshot development path
+- malformed snapshot negative fixture
+- unsupported-shape negative fixture
+- tests for direct, wrapped, unsupported, and malformed snapshot inputs
 
-- one Claude shared link can be fetched
-- parser-repair diagnostics are available
+### Phase 5: Markdown Renderer
 
-### Phase 5: Fixture Capture
+Status: complete for V1.
 
-Build:
+Completed:
 
-- first representative sanitized Claude shared-page fixtures
-- fixture catalog
-- extractor target tests
+- Markdown title and metadata
+- user/Claude turn headings
+- assistant heading demotion so export title remains the only H1
+- visual artifact placeholders in Markdown
+- deterministic output from snapshot fixtures
+- golden Markdown snapshot-style test for code fixture
+- code fence preservation while demoting headings outside fences
+- real long fixture test proving raw tool blocks do not leak into Markdown
 
-Done when:
+### Phase 6: HTML/PDF Renderer
 
-- extractor work can proceed without depending on live links every time
+Status: complete for V1.
 
-### Phase 6: Extractor V1
+Completed:
 
-Build:
+- Claude-inspired PDF layout
+- first-page H1 and metadata
+- source link hyperlinking
+- plain URL linkification in user text
+- Markdown links in assistant output
+- page footer
+- user bubbles and assistant prose styling
+- complete SVG visual artifact rendering
+- removed internal omitted-block notes
+- raw assistant HTML is escaped before HTML/PDF rendering
+- SVG visual artifacts are sanitized before HTML/PDF rendering
 
-- payload discovery
-- raw message extraction
-- clear failure modes
+Release posture:
 
-Done when:
+- PDF output is release-grade for the observed V1 fixture set.
+- Future visual regression tests would be useful maintenance tooling, not a Phase 6 blocker.
 
-- extractor tests pass on saved fixtures
-- at least one live Claude shared link is manually verified
+### Phase 7: Local Output And CLI Execution
 
-### Phase 7: Normalizer V1
+Status: complete for V1.
 
-Build:
+Completed:
 
-- raw payload -> stable turn/block model
-- text/code support
-- artifact placeholders where needed
-
-Done when:
-
-- normalized output is stable and renderer-ready
-
-### Phase 8: Renderer V1
-
-Build:
-
-- readable Markdown renderer
-- golden output tests
-
-Done when:
-
-- Markdown from text/code fixtures is deterministic and useful
-
-### Phase 9: Local File Writer
-
-Build:
-
-- local write path
-- overwrite/force behavior
+- explicit local output path
 - parent directory creation
+- default unique Downloads path
+- stdout for Markdown/HTML
+- PDF file output
+- overwrite refusal for explicit files
+- `--force` overwrite for explicit files
+- compiled CLI smoke tests from fixtures
+- tests for default output path uniqueness
+- CLI integration tests using temp directories
 
-Done when:
+### Phase 8: User-Facing Error Copy
 
-- explicit local writes are safe and tested
+Status: complete for current known failure modes.
 
-### Phase 10: Full Local Export Integration
+Completed:
 
-Build:
+- missing Chromium error with install command
+- auth-page guidance
+- browser-check guidance
+- timeout guidance
+- README troubleshooting section
+- tests for key error copy
+- regression tests for known smoke-test failures
 
-- end-to-end local integration tests
-- README usage documentation
-- final local-path polish
+### Phase 9: Examples And Docs
 
-Done when:
+Status: complete for V1.
 
-- local-only exporter path is reliable end to end
+Completed:
 
-### Phase 11: Final Polish for `v1.0`
+- README updated to real behavior
+- examples folder leaned down to ChatGPT-style shape
+- docs updated for browser capture contract
+- fixture capture notes added
+- current examples generated through real CLI
+- examples regenerated through built CLI after Phase 9 review
+- final public-safety fixture review completed for V1 examples
 
-Build:
+### Phase 10: Release Candidate Hardening
 
-- user-facing copy cleanup
-- README polish
-- artifact filtering and cleanup
-- final manual smoke test
+Status: in progress.
 
-Done when:
+Remaining:
 
-- the first local-only release candidate feels trustworthy and coherent
+- update/commit/push current work
+- add one code-heavy fixture if easy
+- tag or mark first release candidate when ready
 
-### Phase 12: GitHub Writer (`v1.1`)
+Completed:
 
-Build:
+- release checklist added in `docs/RELEASE_CHECKLIST.md`
+- package metadata includes repository, bugs, homepage, and keywords
+- release gates passed: test, typecheck, build, pack dry-run, production audit
+- final live URL smoke attempted; Claude/Cloudflare showed browser verification loop, matching the documented experimental-path limitation
 
-- real GitHub file writer
-- overwrite/update logic
-- auth and conflict handling
-- docs and smoke test
+### Phase 11: GitHub Writer
 
-Done when:
+Status: not started.
 
-- a real Claude export can be written into a GitHub repo path
+Target later version: `v1.1`.
 
-### Phase 13: Claude-Style PDF Export (`v1.2`)
+### Phase 12: Web Frontend
 
-Build:
+Status: not started.
 
-- HTML render layer inspired by Claude’s reading experience
-- print-friendly PDF output
-- footer pagination
-- image/artifact display where possible
-
-Done when:
-
-- long text, code, and artifact-bearing Claude chats export cleanly as PDFs
-
-### Phase 14: Lightweight Web Frontend (`v1.3`)
-
-Build:
-
-- small hosted frontend over the exporter engine
-- Markdown/PDF choice
-- download flow
-- likely Netlify deployment
-
-Done when:
-
-- a non-technical user can paste a Claude shared link and download a result
-
-## Auth Strategy
-
-### Shared Link
-
-No auth should be required for the core local exporter path.
-
-### GitHub
-
-GitHub export requires:
-
-- user-provided `GITHUB_TOKEN`
-- repo contents write access
-
-### Anthropic API
-
-Do not require Anthropic API auth for the core shared-link exporter.
-
-If future features ever use the Anthropic API, keep that optional and clearly separate from the local shared-link workflow.
+Target later version: after CLI stabilizes.
 
 ## README Commitments
 
-The first public README should clearly explain:
+README should clearly explain:
 
 - what the tool does
-- that it works from Claude shared links
+- that live URL export uses Playwright Chromium
+- that Safari and normal Chrome sessions cannot be reused
+- how to install Playwright Chromium if missing
+- how to export to Markdown, HTML, and PDF
+- how to use saved snapshots
 - that shared chats are snapshots
-- that attached files are not included in the shared snapshot
-- that raw MCP data is not included in the shared snapshot
-- how to export to Markdown
-- how to export to PDF later
+- that attached files are not expected in snapshots
 - privacy limitations
+- troubleshooting for auth/browser checks
 
-## Tech Stack
-
-Recommended baseline:
-
-- TypeScript
-- Node.js
-- Vitest
-- standard `fetch`
-- optional Playwright later for PDF or DOM enrichment
+Status: complete for current behavior.
 
 ## Recommendation Summary
 
-Build the Claude exporter the same way the ChatGPT exporter succeeded:
+The exporter is now a working browser-assisted local CLI, not just a parser plan.
 
-- shared-link first
-- local-first
-- fixture-driven
-- narrow scope
-- clear failure modes
+Keep the next work boring and test-led:
 
-Key Claude-specific differences to plan around:
-
-- shared snapshots may include artifacts
-- files remain private and should not be expected in exports
-- MCP tool-call internals are intentionally hidden
-- extractor behavior must be grounded in real saved Claude share fixtures before later phases claim completeness
+- keep regression fixtures current
+- add one code-heavy fixture
+- do a final docs/examples review
+- commit and push the current release-candidate state

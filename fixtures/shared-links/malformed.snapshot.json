@@ -1,0 +1,7 @@
+{
+  "snapshot_name": "Malformed Snapshot",
+  "chat_messages": [
+    {
+      "sender": "human",
+      "content": [
+        { "type": "text", "text": "This JSON intentionally does not close."

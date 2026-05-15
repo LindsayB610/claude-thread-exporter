@@ -1,9 +1,24 @@
 {
   "name": "claude-thread-exporter",
   "version": "0.1.0",
-  "description": "Local-first CLI for exporting Claude shared-link chats to Markdown.",
+  "description": "Local-first CLI for exporting Claude shared-link chats to Markdown, HTML, and PDF.",
   "license": "MIT",
   "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LindsayB610/claude-thread-exporter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LindsayB610/claude-thread-exporter/issues"
+  },
+  "homepage": "https://github.com/LindsayB610/claude-thread-exporter#readme",
+  "keywords": [
+    "claude",
+    "export",
+    "markdown",
+    "pdf",
+    "playwright"
+  ],
   "type": "module",
   "bin": {
     "claude-thread-exporter": "./dist/cli.js"
@@ -36,5 +51,9 @@
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "marked": "^18.0.3",
+    "playwright": "^1.60.0"
   }
 }

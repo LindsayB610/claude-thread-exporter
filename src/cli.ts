@@ -1,20 +1,127 @@
-const HELP_TEXT = `claude-thread-exporter
+#!/usr/bin/env node
+import { access, mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import {
+  HelpRequested,
+  captureClaudeSnapshot,
+  helpText,
+  parseArgs,
+  readSnapshotFile,
+  renderClaudeHtml,
+  renderMarkdown,
+  renderPdf,
+  resolveDefaultOutPath
+} from "./index.js";
+import { snapshotTitle } from "./render/shared.js";
+import type { ClaudeSnapshot, RenderInput } from "./types.js";
 
-Usage:
-  claude-thread-exporter --url "https://claude.ai/share/..."
+async function main(argv: string[]): Promise<void> {
+  let options;
+  try {
+    options = parseArgs(argv);
+  } catch (error) {
+    if (error instanceof HelpRequested) {
+      process.stdout.write(`${helpText}\n`);
+      return;
+    }
+    throw error;
+  }
 
-Status:
-  The repository scaffold and implementation plan are in place.
-  The exporter implementation is intentionally pending fixture capture.
-`;
+  const snapshot = options.snapshotPath
+    ? await readSnapshotFile(options.snapshotPath)
+    : await captureClaudeSnapshot({
+        url: options.url!,
+        profileDir: options.profileDir,
+        timeoutMs: options.timeoutMs,
+        log: createUrlCaptureLogger()
+      });
 
-const args = process.argv.slice(2);
+  if (options.saveSnapshotPath) {
+    await writeJson(options.saveSnapshotPath, snapshot, options.force);
+    process.stderr.write(`Saved snapshot JSON to ${options.saveSnapshotPath}\n`);
+  }
 
-if (args.includes("--help") || args.includes("-h")) {
-  process.stdout.write(`${HELP_TEXT}\n`);
-} else {
-  process.stderr.write(
-    "claude-thread-exporter is not implemented yet. See CLAUDE_EXPORT_PLAN.md for the current plan.\n"
-  );
-  process.exitCode = 1;
+  const input: RenderInput = {
+    snapshot,
+    sourceUrl: options.sourceUrl ?? options.url
+  };
+
+  if (options.stdout) {
+    process.stdout.write(renderStdout(input, options.format));
+    return;
+  }
+
+  const outPath = options.out ?? (await resolveDefaultOutPath(snapshotTitle(snapshot), options.format));
+  await mkdir(path.dirname(outPath), { recursive: true });
+
+  if (options.format === "pdf") {
+    await assertWritable(outPath, options.force);
+    await renderPdf(input, outPath);
+  } else {
+    await writeTextFile(outPath, renderStdout(input, options.format), options.force);
+  }
+
+  process.stderr.write(`Saved ${options.format.toUpperCase()} export to ${outPath}\n`);
 }
+
+function createUrlCaptureLogger(): (message: string) => void {
+  let warned = false;
+
+  return (message) => {
+    if (!warned) {
+      process.stderr.write(
+        [
+          "Warning: Claude live URL capture is experimental.",
+          "Claude/Cloudflare may block or loop browser verification in Playwright Chromium.",
+          "If that happens, try again later or export from a saved snapshot JSON with --snapshot.",
+          ""
+        ].join("\n")
+      );
+      warned = true;
+    }
+
+    process.stderr.write(`${message}\n`);
+  };
+}
+
+function renderStdout(input: RenderInput, format: "md" | "html" | "pdf"): string {
+  if (format === "md") {
+    return renderMarkdown(input);
+  }
+
+  if (format === "html") {
+    return renderClaudeHtml(input);
+  }
+
+  throw new Error("PDF output cannot be written to stdout. Use --out or omit --stdout.");
+}
+
+async function writeJson(pathname: string, snapshot: ClaudeSnapshot, force: boolean): Promise<void> {
+  await mkdir(path.dirname(pathname), { recursive: true });
+  await writeTextFile(pathname, `${JSON.stringify(snapshot, null, 2)}\n`, force);
+}
+
+async function writeTextFile(pathname: string, contents: string, force: boolean): Promise<void> {
+  await assertWritable(pathname, force);
+  await writeFile(pathname, contents, "utf8");
+}
+
+async function assertWritable(pathname: string, force: boolean): Promise<void> {
+  if (force) {
+    return;
+  }
+
+  try {
+    await access(pathname);
+  } catch {
+    return;
+  }
+
+  throw new Error(`Refusing to overwrite existing file: ${pathname}\nRe-run with --force to overwrite it.`);
+}
+
+main(process.argv.slice(2)).catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`${message}\n`);
+  process.exitCode = 1;
+});
