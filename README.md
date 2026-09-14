@@ -226,6 +226,7 @@ Run checks:
 ```bash
 npm run check
 npm test
+npm run test:coverage
 ```
 
 Build:
